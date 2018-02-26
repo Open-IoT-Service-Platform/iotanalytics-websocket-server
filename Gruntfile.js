@@ -1,19 +1,26 @@
-/**
- * Copyright (c) 2015 Intel Corporation
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+/*
+ Copyright (c) 2014, Intel Corporation
+
+ Redistribution and use in source and binary forms, with or without modification,
+ are permitted provided that the following conditions are met:
+
+ * Redistributions of source code must retain the above copyright notice,
+ this list of conditions and the following disclaimer.
+ * Redistributions in binary form must reproduce the above copyright notice,
+ this list of conditions and the following disclaimer in the documentation
+ and/or other materials provided with the distribution.
+
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-'use strict';
 
 module.exports = function(grunt) {
     // Project configuration.
@@ -21,109 +28,97 @@ module.exports = function(grunt) {
     grunt.initConfig({
         pkg: grunt.file.readJSON('package.json'),
         dirs: {
-            jshint: 'buildscripts/jshint',
-            jsfiles: ['Gruntfile.js',
-                      'server.js']
+            eslint: 'buildscripts/eslint',
+            jsfiles: ['*.js',
+                      'admin/*.js',
+                      'bin/*.js',
+                      'data/*.js',
+                      'examples/*.js',
+                      'lib/**/*.js',
+                      'listeners/**/*.js'
+            ],
+            testfiles: ['test/*.js']
         },
-        jshint: {
-			options: {
-				jshintrc: '<%= dirs.jshint %>/config.json',
-				ignores: ['lib/deprected/*.js']
-			},
-			local: {
-				src: ['<%= dirs.jsfiles %>'],
-				options: {
-					force: true
-				}
-			},
-			teamcity: {
-				src: ['<%= dirs.jsfiles %>'],
-				options: {
-					force: true,
-					reporter: require('jshint-teamcity')
-				}
-			}
-		},
+        license_finder: {
+            default_options: {
+                options: {
+                    production: false,
+                    directory: process.cwd(),
+                    csv: true,
+                    out: 'licenses.csv'
+                }
+            },
+            production : {
+                options: {
+                    production: true,
+                    directory: process.cwd(),
+                    csv: true,
+                    out: 'licenses_production.csv'
+                }
+            }
+        },
+        eslint: {
+            local: {
+                src: ['<%= dirs.jsfiles %>'],
+                options: {
+                    configFile: '<%= dirs.eslint %>/config.json'
+                }
+            },
+            tests: {
+                src: ['<%= dirs.testfiles %>'],
+                options: {
+                    configFile: '<%= dirs.eslint %>/test-config.json'
+                }
+            }
+        },
         compress: {
             teamcity: {
                 options: {
-                    archive: 'dist/'+'<%= pkg.name %>_' + buildID + ".tar.gz",
+                    archive: 'dist/'+'<%= pkg.name %>_' + buildID + ".tgz",
                     mode: 'tgz'
                 },
                 files: [{cwd: '.',
-                        expand: true,
-                        src: ['**/*.js',
-                               '**/*.*',
-                               '!log.txt',
-                               '!README.md',
-                               '!buildscripts/**',
-                                'node_modules/',
-                                '!node_modules/grunt**/**',
-                                '!node_modules/karma**/**',
-                                '!node_modules/mocha**/**',
-                                '!node_modules/jshint**/**',
-                                '!node_modules/istanbul/**',
-                                '!node_modules/supertest/**',
-                                '!node_modules/sinon/**',
-                                '!node_modules/chai/**',
-                                '!node_modules/asserts/**',
-                                '!node_modules/rewire/**',
-                                '!build.sh',
-                                '!deploy.sh',
-                                '!dist/**',
-                                '!test/**',
-                                '!Gruntfile.js',
-                            ],
-                            /* this is the root folder of untar file */
+                         expand: true,
+                         src: ['**/*.js', '**/*.sh', 'config.json', '!node_modules/**', '!dist/**', '!test/**', '!Gruntfile.js'],
+                    /* this is the root folder of untar file */
                          dest: '<%= pkg.name %>/'
-                        }
-                    ]
                 }
-            },
-        shell: {
-            packaging: {
-                command: 'tar --verbose --exclude-vcs -zc --exclude dist -f dist/'+'<%= pkg.name %>_' + buildID + '.tar.gz'
-                },
-            teamcitypackage: {
-                command: 'tar --exclude-vcs -zc --exclude dist . -f dist/'+'<%= pkg.name %>_' + buildID + '.tar.gz' 
+                ]
             }
         },
-		bumpup: {
-			setters: {
-				version: function (old) {
-					var ret = old;
-                    
-					if (buildID !== 'local') {
-                        var ver = old.split(".");
-						ver[2] = buildID;
-                        ret = ver.join('.');
-					}
-					return ret;
-				},
-				date: function () {
-					return new Date().toISOString();
-				}
-			},
-			file: 'package.json'
-		}
+        mocha_istanbul: {
+            local: {
+                src: 'test/', // the folder, not the files
+                options: {
+                    ui: 'bdd',
+                    coverage: true,
+                    recursive: true,
+                    reporter: 'list',
+                    timeout: 20000,
+                    check: {
+                        lines: 60,
+                        statements: 60,
+                        function: 60
+                    },
+                    root: '.', // define where the cover task should consider the root of libraries that are covered by tests
+                    coverageFolder: 'dist/coverage',
+                    reportFormats: ['lcov']
+                }
+            }
+        }
     });
 
-    grunt.event.on('coverage', function(lcovFileContents, done){
+    grunt.event.on('coverage', function(lcovFileContents, done) {
         // Check below
         done();
     });
 
     grunt.loadNpmTasks('grunt-mocha-istanbul');
-    // Load the plugin that provides the "uglify" task.
-    grunt.loadNpmTasks('grunt-contrib-jshint');
+    grunt.loadNpmTasks('grunt-license-finder');
+    grunt.loadNpmTasks('gruntify-eslint');
     grunt.loadNpmTasks('grunt-contrib-compress');
-	grunt.loadNpmTasks('grunt-bumpup');
-    grunt.loadNpmTasks('grunt-shell');
 
     // Default task(s).
-    grunt.registerTask('default', ['jshint:local']);
-    grunt.registerTask('teamcity_codevalidation', ['jshint:teamcity']);
-
-    grunt.registerTask('packaging', ['bumpup', 'shell:teamcitypackage']);
-
-};
+    grunt.registerTask('default', ['eslint:local', 'eslint:tests', 'mocha_istanbul:local']);
+    grunt.registerTask('packaging', ['compress:teamcity']);
+}
