@@ -27,7 +27,10 @@ var websocket = require('websocket'),
     cert = fs.readFileSync(__dirname + '/keys/public.pem'),
     msgBuilder = require('./errors'),
     connectionBindings = require('./iot-entities').connectionBindings,
-    db = require('./iot-entities');
+    db = require('./iot-entities'),
+    kafka = require('kafka-node'),
+    cfenvReader = require('./lib/cfenv/reader'),
+    heartBeat = require('./lib/heartbeat');
 
 var serverAddress = conf.ws.externalAddress + ':' + conf.ws.externalPort;
 
@@ -55,6 +58,7 @@ db.connect()
     .then(function() {
         server.listen(conf.ws.port, function() {
             logger.info('Server - ' + conf.ws.serverAddress +  ' is listening on port ' + conf.ws.port + '. Host externalIP: ' + conf.ws.externalAddress);
+            heartBeat.start();
         });
     });
 
