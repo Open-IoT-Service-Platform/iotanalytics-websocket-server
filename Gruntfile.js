@@ -105,7 +105,27 @@ module.exports = function(grunt) {
 				}
 			},
 			file: 'package.json'
-		}
+        },
+        mocha_istanbul: {
+            local: {
+                src: 'test/', // the folder, not the files
+                options: {
+                    ui: 'bdd',
+                    coverage: true,
+                    recursive: true,
+                    reporter: 'list',
+                    timeout: 20000,
+                    check: {
+                        lines: 60,
+                        statements: 60,
+                        function: 60
+                    },
+                    root: '.', // define where the cover task should consider the root of libraries that are covered by tests
+                    coverageFolder: 'dist/coverage',
+                    reportFormats: ['lcov']
+                }
+            }
+        }
     });
 
     grunt.event.on('coverage', function(lcovFileContents, done){
@@ -121,7 +141,7 @@ module.exports = function(grunt) {
     grunt.loadNpmTasks('grunt-shell');
 
     // Default task(s).
-    grunt.registerTask('default', ['jshint:local']);
+    grunt.registerTask('default', ['jshint:local', 'mocha_istanbul:local']);
     grunt.registerTask('teamcity_codevalidation', ['jshint:teamcity']);
 
     grunt.registerTask('packaging', ['bumpup', 'shell:teamcitypackage']);
