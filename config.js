@@ -18,6 +18,7 @@
 var cfenvReader = require('./lib/cfenv/reader');
 var postgres_credentials = cfenvReader.getServiceCredentials("mypostgres");
 var websocket_credentials = cfenvReader.getServiceCredentials('websocket-ups');
+var winston = require('winston');
 
 var config = {
     postgres: {
@@ -45,25 +46,19 @@ var config = {
         "password": websocket_credentials.password
     },
     "logger": {
-        transport : {
-            console: {
-                handleExceptions: true,
-                json: false,
-                colorize: true,
-                prettyPrint: false,
-                timestamp: true,
-                exitOnError: false,
-                level: 'debug'
-            }
-        }
+        format : winston.format.combine(
+        	        winston.format.colorize(),
+        	        winston.format.simple(),
+        	        winston.format.timestamp(),
+        	        winston.format.printf(info => { return `${info.timestamp}-${info.level}: ${info.message}`; })
+        	     ),
+        transports : [new winston.transports.Console()]                  
     }
 };
 
 if (process.env.NODE_ENV && (process.env.NODE_ENV.toLowerCase().indexOf("local") !== -1)) {
     config.ws.externalAddress = config.ws.serverAddress;
     config.ws.externalPort = config.ws.port;
-    config.logger.transport.console.json = false;
-    config.logger.transport.console.prettyPrint = false;
 }
 
 
