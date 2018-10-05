@@ -54,13 +54,21 @@ var server = http.createServer(function(request, response) {
     response.writeHead(404);
     response.end();
 });
-db.connect()
-    .then(function() {
-        server.listen(conf.ws.port, function() {
-            logger.info('Server - ' + conf.ws.serverAddress +  ' is listening on port ' + conf.ws.port + '. Host externalIP: ' + conf.ws.externalAddress);
-            heartBeat.start();
+
+var dbconnect = function () {
+    db.connect()
+        .then(function() {
+            server.listen(conf.ws.port, function() {
+                logger.info('Server - ' + conf.ws.serverAddress +  ' is listening on port ' + conf.ws.port + '. Host externalIP: ' + conf.ws.externalAddress);
+                heartBeat.start();
+            });
+        }).catch(function(err) {
+            logger.error('An exception is thrown while connecting to database: ' + err + '\n Waiting 3 seconds to reconnect...');
+            setTimeout(dbconnect, 3000);
         });
-    });
+};
+
+dbconnect();
 
 var clients = {};
 
