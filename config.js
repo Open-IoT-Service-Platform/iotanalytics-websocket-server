@@ -15,19 +15,66 @@
  */
 'use strict';
 
-var cfenvReader = require('./lib/cfenv/reader');
-var postgres_credentials = cfenvReader.getServiceCredentials("mypostgres");
-var websocket_credentials = cfenvReader.getServiceCredentials('websocket-ups');
-var winston = require('winston');
+// Gets the config for the configName from the OISP_WEBSOCKET_SERVER_CONFIG environment variable
+// Returns empty object if the config can not be found
+var getOISPConfig = (function () {
+	if (!process.env.OISP_WEBSOCKET_SERVER_CONFIG) {
+		console.log("Root config environment variable (OISP_WEBSOCKET_SERVER_CONFIG) is missing...");
+		return function () { return {}; };
+	}
+	var websocketServerConfig = JSON.parse(process.env.OISP_WEBSOCKET_SERVER_CONFIG);
+	
+	var resolveConfig = function (config, stack) {
+		if (!stack) {
+			stack = ["OISP_WEBSOCKET_SERVER_CONFIG"];
+		}
+		for (var property in config) {
+			if (typeof config[property] === "string" &&
+					(config[property].substring(0,2) === "@@" || config[property].substring(0,2) === "%%")) {
+				var configName = config[property].substring(2, config[property].length);
+				if (!process.env[configName]) {
+					console.log("Config environment variable (" + configName + ") is missing...");
+					config[property] = {};
+				} else if (stack.indexOf(configName) !== -1) {
+					console.log("Detected cyclic reference in config decleration: " + configName + ", stopping recursion...");
+					config[property] = {};
+				} else {
+					config[property] = JSON.parse(process.env[configName]);
+					stack.push(configName);
+					resolveConfig(config[property], stack);
+					stack.pop();
+				}
+			}
+		}
+	};
+	
+	resolveConfig(websocketServerConfig);
+	
+	return function(configName) {
+			if (!websocketServerConfig[configName])
+				return {};
+			else {
+				console.log(configName + " is set to: " + JSON.stringify(websocketServerConfig[configName]));
+				return websocketServerConfig[configName];
+			}
+		};	
+})();
+
+var postgres_config = getOISPConfig("postgresConfig"),
+    websocketUser_config = getOISPConfig("websocketUserConfig"),
+    kafka_config = getOISPConfig("kafkaConfig"),
+    uri = getOISPConfig("uri"),
+    winston = require('winston'),
+    os = require('os');
 
 var config = {
     postgres: {
-        database: postgres_credentials.dbname,
-        username: postgres_credentials.username,
-        password: postgres_credentials.password,
+        database: postgres_config.dbname,
+        username: postgres_config.username,
+        password: postgres_config.password,
         options: {
-            host: postgres_credentials.hostname,
-            port: postgres_credentials.port,
+            host: postgres_config.hostname,
+            port: postgres_config.port,
             dialect: 'postgres',
             pool: {
                 max: 12,
@@ -36,14 +83,19 @@ var config = {
             }
         }
     },
+    kafka: {
+        uri: kafka_config.uri,
+        topicsHeartbeatName: kafka_config.topicsHeartbeatName,
+        topicsHeartbeatInterval: kafka_config.topicsHeartbeatInterval
+    },
     "ws": {
-        "externalAddress": cfenvReader.getApplicationUri(),
+        "externalAddress": uri,
         //Until TAP platform won't supper unsecure websocket connection, we can only use 443 port
         "externalPort": 5000,
-        "serverAddress": cfenvReader.getHost(),
+        "serverAddress": os.hostname(),
         "port": 5000,
-        "username": websocket_credentials.username,
-        "password": websocket_credentials.password
+        "username": websocketUser_config.username,
+        "password": websocketUser_config.password
     },
     "logger": {
         format : winston.format.combine(

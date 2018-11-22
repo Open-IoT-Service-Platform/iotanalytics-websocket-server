@@ -16,7 +16,6 @@
     "sequelize": "4.39.0",
     "pg-hstore": "2.3.2",
     "pg": "7.5.0",
-    "cfenv": "^1.0.0",
     "kafka-node": "^3.0.1"
   },
   "author": "Intel, CPG",

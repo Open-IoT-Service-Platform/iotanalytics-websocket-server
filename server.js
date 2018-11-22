@@ -29,7 +29,6 @@ var websocket = require('websocket'),
     connectionBindings = require('./iot-entities').connectionBindings,
     db = require('./iot-entities'),
     kafka = require('kafka-node'),
-    cfenvReader = require('./lib/cfenv/reader'),
     heartBeat = require('./lib/heartbeat');
 
 var serverAddress = conf.ws.externalAddress + ':' + conf.ws.externalPort;
