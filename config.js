@@ -23,7 +23,7 @@ var getOISPConfig = (function () {
 		return function () { return {}; };
 	}
 	var websocketServerConfig = JSON.parse(process.env.OISP_WEBSOCKET_SERVER_CONFIG);
-	
+
 	var resolveConfig = function (config, stack) {
 		if (!stack) {
 			stack = ["OISP_WEBSOCKET_SERVER_CONFIG"];
@@ -47,9 +47,9 @@ var getOISPConfig = (function () {
 			}
 		}
 	};
-	
+
 	resolveConfig(websocketServerConfig);
-	
+
 	return function(configName) {
 			if (!websocketServerConfig[configName])
 				return {};
@@ -57,7 +57,7 @@ var getOISPConfig = (function () {
 				console.log(configName + " is set to: " + JSON.stringify(websocketServerConfig[configName]));
 				return websocketServerConfig[configName];
 			}
-		};	
+		};
 })();
 
 var postgres_config = getOISPConfig("postgresConfig"),
@@ -66,6 +66,34 @@ var postgres_config = getOISPConfig("postgresConfig"),
     uri = getOISPConfig("uri"),
     winston = require('winston'),
     os = require('os');
+
+// Get replica information from the postgres config,
+// Done this way to avoid compatibility problems with other services
+var	postgresReadReplicas = [],
+	postgresWriteConf = {};
+
+if (postgres_config.readReplicas) {
+	postgresReadReplicas = postgres_config.readReplicas;
+} else if (postgres_config.readHostname) {
+	postgresReadReplicas.push({
+		host: postgres_config.readHostname,
+		port: postgres_config.readPort,
+		username: postgres_config.readUsername,
+		password: postgres_config.readPassword
+	});
+} else {
+	// Use default db config as read
+	postgresReadReplicas.push({});
+}
+
+if (postgres_config.writeHostname) {
+	postgresWriteConf = {
+		host: postgres_config.writeHostname,
+		port: postgres_config.writePort,
+		username: postgres_config.writeUsername,
+		password: postgres_config.writePassword,
+	};
+}
 
 var config = {
     postgres: {
@@ -76,6 +104,10 @@ var config = {
             host: postgres_config.hostname,
             port: postgres_config.port,
             dialect: 'postgres',
+			replication: {
+				read: postgresReadReplicas,
+				write: postgresWriteConf
+			},
             pool: {
                 max: 12,
                 min: 0,
@@ -104,7 +136,7 @@ var config = {
         	        winston.format.timestamp(),
         	        winston.format.printf(info => { return `${info.timestamp}-${info.level}: ${info.message}`; })
         	     ),
-        transports : [new winston.transports.Console()]                  
+        transports : [new winston.transports.Console()]
     }
 };
 
