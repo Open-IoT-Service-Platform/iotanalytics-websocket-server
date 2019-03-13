@@ -140,10 +140,13 @@ var config = {
     }
 };
 
-if (process.env.NODE_ENV && (process.env.NODE_ENV.toLowerCase().indexOf("local") !== -1)) {
-    config.ws.externalAddress = config.ws.serverAddress;
-    config.ws.externalPort = config.ws.port;
+if (process.env.DASHBOARD_SERVICE_HOST) {
+	config.ws.externalAddress = config.ws.serverAddress + '.websocket-server';
+} else {
+	config.ws.externalAddress = config.ws.serverAddress;
 }
+config.ws.externalPort = config.ws.port;
+
 
 
 module.exports = config;
