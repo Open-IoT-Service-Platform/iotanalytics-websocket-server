@@ -161,7 +161,7 @@ wsServer.on('request', function(request) {
         connection.on('close', function(reasonCode, description) {
             Object.keys(clients).some(function(deviceId) {
                 if(clients[deviceId] === connection) {
-		    redisClient.del('dummyvalue', function(err, response) {
+		    redisClient.del(devideId, function(err, response) {
 			if (response == 1) {
 			    console.log("Removed " + deviceId + "from Redis upon disconnect.");
 			} else{
