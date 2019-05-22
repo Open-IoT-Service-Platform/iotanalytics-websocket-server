@@ -29,6 +29,7 @@ var websocket = require('websocket'),
     connectionBindings = require('./iot-entities').connectionBindings,
     db = require('./iot-entities'),
     kafka = require('kafka-node'),
+    redis = require('redis'),
     heartBeat = require('./lib/heartbeat');
 
 var serverAddress = conf.ws.externalAddress + ':' + conf.ws.externalPort;
@@ -54,6 +55,8 @@ var server = http.createServer(function(request, response) {
     response.end();
 });
 
+
+// TODO REMOVE SQL stuff
 var dbconnect = function () {
     db.connect()
         .then(function() {
@@ -68,6 +71,10 @@ var dbconnect = function () {
 };
 
 dbconnect();
+
+// TODO read from config
+// TODO error handling
+var redisClient = redis.createClient(6379, 'redis');
 
 var clients = {};
 
@@ -108,17 +115,17 @@ wsServer.on('request', function(request) {
                                     clients[messageObject.deviceId].close(CloseReasons.CLOSE_REASON_NORMAL);
                                 }
                                 clients[messageObject.deviceId] = connection;
-                                connectionBindings.update(messageObject.deviceId , serverAddress, true,
-                                    function (err) {
+
+				redisClient.set('ws_' + messageObject.deviceId, serverAddress , function(err, reply) {
                                         if (err) {
-                                            logger.error("Unable to update record in db for device - " + messageObject.deviceId + ', error: ' + JSON.stringify(err));
+                                            logger.error("Unable to update record in Redis for device - " + messageObject.deviceId + ', error: ' + JSON.stringify(err));
                                             connection.sendUTF(msgBuilder.build(msgBuilder.Errors.DatabaseError));
                                             connection.close(CloseReasons.CLOSE_REASON_NORMAL);
                                         } else {
-                                            logger.debug("Record in database update for device - " + messageObject.deviceId);
+                                            logger.debug("Record in Redis update for device - " + messageObject.deviceId);
                                             connection.sendUTF(msgBuilder.build(msgBuilder.Success.Subscribed));
                                         }
-                                    });
+				});
                             } else {
                                 logger.info("Unauthorized device " + messageObject.deviceId);
                                 connection.sendUTF(msgBuilder.build(msgBuilder.Errors.InvalidToken));
@@ -154,14 +161,14 @@ wsServer.on('request', function(request) {
         connection.on('close', function(reasonCode, description) {
             Object.keys(clients).some(function(deviceId) {
                 if(clients[deviceId] === connection) {
-                    connectionBindings.update(deviceId, serverAddress, false, function(err) {
-                        if(err) {
-                            logger.error("Failure: " + err);
+		    redisClient.del('dummyvalue', function(err, response) {
+			if (response == 1) {
+			    console.log("Removed " + deviceId + "from Redis upon disconnect.");
+			} else{
                             logger.error("Cannot remove " + deviceId + " from database.");
-                        }
-                        delete clients[deviceId];
-                        return true;
-                    });
+			}
+		    });
+		    return true;
                 }
                 return false;
             });

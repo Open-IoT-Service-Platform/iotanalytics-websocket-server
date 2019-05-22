@@ -16,7 +16,8 @@
     "sequelize": "4.39.0",
     "pg-hstore": "2.3.2",
     "pg": "7.5.0",
-    "kafka-node": "^3.0.1"
+    "kafka-node": "^3.0.1",
+    "redis": "2.8.0"
   },
   "author": "Intel, CPG",
   "devDependencies": {
