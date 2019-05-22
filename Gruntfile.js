@@ -22,28 +22,42 @@ module.exports = function(grunt) {
         pkg: grunt.file.readJSON('package.json'),
         dirs: {
             jshint: 'buildscripts/jshint',
+            eslint: 'buildscripts/eslint',
             jsfiles: ['Gruntfile.js',
-                      'server.js']
+                'server.js',
+                'config.js',
+                'errors.js',
+                'lib/**/*.js',
+                'iot-entities/**/*.js']
         },
         jshint: {
-			options: {
-				jshintrc: '<%= dirs.jshint %>/config.json',
-				ignores: ['lib/deprected/*.js']
-			},
-			local: {
-				src: ['<%= dirs.jsfiles %>'],
-				options: {
-					force: true
-				}
-			},
-			teamcity: {
-				src: ['<%= dirs.jsfiles %>'],
-				options: {
-					force: true,
-					reporter: require('jshint-teamcity')
-				}
-			}
-		},
+            options: {
+                jshintrc: '<%= dirs.jshint %>/config.json'
+            },
+            local: {
+                src: ['<%= dirs.jsfiles %>'],
+                options: {
+                    force: false
+                }
+            },
+            teamcity: {
+                src: ['<%= dirs.jsfiles %>'],
+                options: {
+                    force: true,
+                    reporter: require('jshint-teamcity')
+                }
+            }
+        },
+        eslint: {
+            local: {
+                options: {
+                    configFile: '<%= dirs.eslint %>/config.json',
+                    ignorePattern: [ 'lib/entropizer/*.js' ],
+                    quiet: true
+                },
+                src: ['<%= dirs.jsfiles %>'],
+            }
+        },
         compress: {
             teamcity: {
                 options: {
@@ -51,60 +65,60 @@ module.exports = function(grunt) {
                     mode: 'tgz'
                 },
                 files: [{cwd: '.',
-                        expand: true,
-                        src: ['**/*.js',
-                               '**/*.*',
-                               '!log.txt',
-                               '!README.md',
-                               '!buildscripts/**',
-                                'node_modules/',
-                                '!node_modules/grunt**/**',
-                                '!node_modules/karma**/**',
-                                '!node_modules/mocha**/**',
-                                '!node_modules/jshint**/**',
-                                '!node_modules/istanbul/**',
-                                '!node_modules/supertest/**',
-                                '!node_modules/sinon/**',
-                                '!node_modules/chai/**',
-                                '!node_modules/asserts/**',
-                                '!node_modules/rewire/**',
-                                '!build.sh',
-                                '!deploy.sh',
-                                '!dist/**',
-                                '!test/**',
-                                '!Gruntfile.js',
-                            ],
-                            /* this is the root folder of untar file */
-                         dest: '<%= pkg.name %>/'
-                        }
-                    ]
+                    expand: true,
+                    src: ['**/*.js',
+                        '**/*.*',
+                        '!log.txt',
+                        '!README.md',
+                        '!buildscripts/**',
+                        'node_modules/',
+                        '!node_modules/grunt**/**',
+                        '!node_modules/karma**/**',
+                        '!node_modules/mocha**/**',
+                        '!node_modules/jshint**/**',
+                        '!node_modules/istanbul/**',
+                        '!node_modules/supertest/**',
+                        '!node_modules/sinon/**',
+                        '!node_modules/chai/**',
+                        '!node_modules/asserts/**',
+                        '!node_modules/rewire/**',
+                        '!build.sh',
+                        '!deploy.sh',
+                        '!dist/**',
+                        '!test/**',
+                        '!Gruntfile.js',
+                    ],
+                    /* this is the root folder of untar file */
+                    dest: '<%= pkg.name %>/'
                 }
-            },
+                ]
+            }
+        },
         shell: {
             packaging: {
                 command: 'tar --verbose --exclude-vcs -zc --exclude dist -f dist/'+'<%= pkg.name %>_' + buildID + '.tar.gz'
-                },
+            },
             teamcitypackage: {
-                command: 'tar --exclude-vcs -zc --exclude dist . -f dist/'+'<%= pkg.name %>_' + buildID + '.tar.gz' 
+                command: 'tar --exclude-vcs -zc --exclude dist . -f dist/'+'<%= pkg.name %>_' + buildID + '.tar.gz'
             }
         },
-		bumpup: {
-			setters: {
-				version: function (old) {
-					var ret = old;
-                    
-					if (buildID !== 'local') {
+        bumpup: {
+            setters: {
+                version: function (old) {
+                    var ret = old;
+
+                    if (buildID !== 'local') {
                         var ver = old.split(".");
-						ver[2] = buildID;
+                        ver[2] = buildID;
                         ret = ver.join('.');
-					}
-					return ret;
-				},
-				date: function () {
-					return new Date().toISOString();
-				}
-			},
-			file: 'package.json'
+                    }
+                    return ret;
+                },
+                date: function () {
+                    return new Date().toISOString();
+                }
+            },
+            file: 'package.json'
         },
         mocha_istanbul: {
             local: {
@@ -136,12 +150,14 @@ module.exports = function(grunt) {
     grunt.loadNpmTasks('grunt-mocha-istanbul');
     // Load the plugin that provides the "uglify" task.
     grunt.loadNpmTasks('grunt-contrib-jshint');
+    grunt.loadNpmTasks('grunt-eslint');
     grunt.loadNpmTasks('grunt-contrib-compress');
-	grunt.loadNpmTasks('grunt-bumpup');
+    grunt.loadNpmTasks('grunt-bumpup');
     grunt.loadNpmTasks('grunt-shell');
 
     // Default task(s).
-    grunt.registerTask('default', ['jshint:local', 'mocha_istanbul:local']);
+    grunt.registerTask('default', ['eslint:local', 'jshint:local', 'mocha_istanbul:local']);
+    grunt.registerTask('validate', ['eslint:local', 'jshint:local']);
     grunt.registerTask('teamcity_codevalidation', ['jshint:teamcity']);
 
     grunt.registerTask('packaging', ['bumpup', 'shell:teamcitypackage']);
