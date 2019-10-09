@@ -27,6 +27,7 @@ var websocket = require('websocket'),
     cert = fs.readFileSync(__dirname + '/keys/public.pem'),
     msgBuilder = require('./errors'),
     connectionBindings = require('./iot-entities').connectionBindings,
+    devices = require('./iot-entities').devices,
     db = require('./iot-entities'),
     heartBeat = require('./lib/heartbeat');
 
@@ -36,7 +37,7 @@ var authorizeDevice = function(token, deviceId, callback) {
     jwt.verify(token, cert, function(err, decoded) {
         if(!err) {
             if (deviceId === decoded.sub) {
-                callback(true);
+                callback(decoded.accounts[0].id);
             } else {
                 callback(false);
             }
@@ -94,30 +95,34 @@ wsServer.on('request', function(request) {
         logger.error('Connection refused.');
     } else {
         var connection = request.accept('echo-protocol');
-        logger.debug('Connection accepted from: ' + connection.remoteAddress);
+        logger.info('Connection accepted from: ' + connection.remoteAddress);
         connection.on('message', function (message) {
             parseMessage(message.utf8Data, function parseResult(err, messageObject) {
                 if (!err) {
                     if (messageObject.type === 'device') {
-                        authorizeDevice(messageObject.deviceToken, messageObject.deviceId, function (verified) {
-                            if (verified) {
+                        authorizeDevice(messageObject.deviceToken, messageObject.deviceId, function (accountId) {
+                            if (accountId) {
                                 logger.info('Registration message received from ' + connection.remoteAddress + ' for device -  ' + messageObject.deviceId);
-                                if(clients[messageObject.deviceId] && clients[messageObject.deviceId].state !== 'closed') {
-                                    logger.info('Closing previous connection to ' + clients[messageObject.deviceId].remoteAddress + ' for device -  ' + messageObject.deviceId);
-                                    clients[messageObject.deviceId].close(CloseReasons.CLOSE_REASON_NORMAL);
-                                }
-                                clients[messageObject.deviceId] = connection;
-                                connectionBindings.update(messageObject.deviceId , serverAddress, true,
-                                    function (err) {
-                                        if (err) {
-                                            logger.error("Unable to update record in db for device - " + messageObject.deviceId + ', error: ' + JSON.stringify(err));
-                                            connection.sendUTF(msgBuilder.build(msgBuilder.Errors.DatabaseError));
-                                            connection.close(CloseReasons.CLOSE_REASON_NORMAL);
-                                        } else {
-                                            logger.debug("Record in database update for device - " + messageObject.deviceId);
-                                            connection.sendUTF(msgBuilder.build(msgBuilder.Success.Subscribed));
-                                        }
-                                    });
+                                return devices.getDeviceUID(accountId, messageObject.deviceId).then(deviceUID => {
+                                    if(clients[deviceUID] && clients[deviceUID].state !== 'closed') {
+                                        logger.info('Closing previous connection to ' + clients[deviceUID].remoteAddress + ' for device -  ' + deviceUID);
+                                        clients[deviceUID].close(CloseReasons.CLOSE_REASON_NORMAL);
+                                    }
+                                    clients[deviceUID] = connection;
+                                    connectionBindings.update(deviceUID, serverAddress, true,
+                                        function (err) {
+                                            if (err) {
+                                                throw err;
+                                            } else {
+                                                logger.debug("Record in database update for device - " + deviceUID);
+                                                connection.sendUTF(msgBuilder.build(msgBuilder.Success.Subscribed));
+                                            }
+                                        });
+                                }).catch(err => {
+                                    logger.error("Unable to update record in db for device - " + messageObject.deviceId + ', error: ' + JSON.stringify(err));
+                                    connection.sendUTF(msgBuilder.build(msgBuilder.Errors.DatabaseError));
+                                    connection.close(CloseReasons.CLOSE_REASON_NORMAL);
+                                });
                             } else {
                                 logger.info("Unauthorized device " + messageObject.deviceId);
                                 connection.sendUTF(msgBuilder.build(msgBuilder.Errors.InvalidToken));
@@ -127,12 +132,12 @@ wsServer.on('request', function(request) {
                     } else if (messageObject.type === 'actuation') {
                         logger.info("Received actuation from dashboard " + JSON.stringify(messageObject));
                         if (messageObject.credentials.username === conf.ws.username && messageObject.credentials.password === conf.ws.password) {
-                            var deviceId = messageObject.body.content.deviceId;
-                            if(clients[deviceId]) {
-                                clients[deviceId].sendUTF(buildActuation(messageObject.body));
-                                logger.info("Message sent to " + deviceId);
+                            var deviceUID = messageObject.body.content.deviceUID;
+                            if(clients[deviceUID]) {
+                                clients[deviceUID].sendUTF(buildActuation(messageObject.body));
+                                logger.info("Message sent to " + deviceUID);
                             } else {
-                                logger.warn("No open connection to: " + deviceId);
+                                logger.warn("No open connection to: " + deviceUID);
                             }
                         } else {
                             logger.error("Invalid credentials in message");
@@ -151,14 +156,14 @@ wsServer.on('request', function(request) {
             });
         });
         connection.on('close', function(reasonCode, description) {
-            Object.keys(clients).some(function(deviceId) {
-                if(clients[deviceId] === connection) {
-                    connectionBindings.update(deviceId, serverAddress, false, function(err) {
+            Object.keys(clients).some(function(deviceUID) {
+                if(clients[deviceUID] === connection) {
+                    connectionBindings.update(deviceUID, serverAddress, false, function(err) {
                         if(err) {
                             logger.error("Failure: " + err);
-                            logger.error("Cannot remove " + deviceId + " from database.");
+                            logger.error("Cannot remove " + deviceUID + " from database.");
                         }
-                        delete clients[deviceId];
+                        delete clients[deviceUID];
                         return true;
                     });
                 }

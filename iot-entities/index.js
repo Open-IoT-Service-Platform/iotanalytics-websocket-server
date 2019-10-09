@@ -45,3 +45,4 @@ var connect = function () {
 module.exports.connect = connect;
 module.exports.sequelize = sequelize;
 module.exports.connectionBindings = require('./connectionBindings');
+module.exports.devices = require('./devices');
