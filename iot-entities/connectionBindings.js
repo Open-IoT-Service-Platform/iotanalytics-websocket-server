@@ -25,10 +25,10 @@ var connectionBindings = sequelize.define('connectionBindings', {
         primaryKey: true,
         defaultValue: DataTypes.UUIDV4
     },
-    deviceId: {
-        type: DataTypes.STRING(255),
+    deviceUID: {
+        type: DataTypes.UUID,
         allowNull: false,
-        unique: 'connectionBindings_deviceId_type_unique'
+        unique: 'connectionBindings_deviceUID_type_unique'
     },
     lastConnectedAt: {
         type: DataTypes.DATE,
@@ -47,7 +47,7 @@ var connectionBindings = sequelize.define('connectionBindings', {
         //Ordering in enum depends on creation date of type, so enum types should be listed in alfabetical order
         type: DataTypes.ENUM('mqtt', 'ws'),
         allowNull: false,
-        unique: 'connectionBindings_deviceId_type_unique'
+        unique: 'connectionBindings_deviceUID_type_unique'
     }
 },
 {
@@ -55,9 +55,9 @@ var connectionBindings = sequelize.define('connectionBindings', {
     updatedAt: 'updated',
     indexes: [
         {
-            name: 'connectionBindings_deviceId_index',
+            name: 'connectionBindings_deviceUID_index',
             method: 'BTREE',
-            fields: ['deviceId']
+            fields: ['deviceUID']
         },
         {
             name: 'connectionBindings_type_index',
@@ -70,7 +70,7 @@ var connectionBindings = sequelize.define('connectionBindings', {
 
 var WEBSOCKET = 'ws';
 
-exports.update = function (deviceId, server, connectingStatus, resultCallback) {
+exports.update = function (deviceUID, server, connectingStatus, resultCallback) {
     var record = {
         server: server,
         connectingStatus: connectingStatus
@@ -78,7 +78,7 @@ exports.update = function (deviceId, server, connectingStatus, resultCallback) {
 
     var filters = {
         where: {
-            deviceId: deviceId,
+            deviceUID: deviceUID,
             type: WEBSOCKET
         },
         fields: ['server', 'connectingStatus'],
@@ -95,7 +95,7 @@ exports.update = function (deviceId, server, connectingStatus, resultCallback) {
             if (!result) {
                 throw new Error('Unable to update record in db');
             } else if (result[0] !== 1) {
-                record.deviceId = deviceId;
+                record.deviceUID = deviceUID;
                 record.type = WEBSOCKET;
                 record.id = uuid();
                 record.lastConnectedAt = new Date().getTime();
