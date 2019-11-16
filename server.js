@@ -26,12 +26,8 @@ var websocket = require('websocket'),
     logger = require('./lib/logger/winstonLogger'),
     cert = fs.readFileSync(__dirname + '/keys/public.pem'),
     msgBuilder = require('./errors'),
-    connectionBindings = require('./iot-entities').connectionBindings,
-    devices = require('./iot-entities').devices,
-    db = require('./iot-entities'),
-    heartBeat = require('./lib/heartbeat');
-
-var serverAddress = conf.ws.externalAddress + ':' + conf.ws.externalPort;
+    heartBeat = require('./lib/heartbeat'),
+    redisClient = require('./iot-entities').redisClient;
 
 var authorizeDevice = function(token, deviceId, callback) {
     jwt.verify(token, cert, function(err, decoded) {
@@ -47,6 +43,7 @@ var authorizeDevice = function(token, deviceId, callback) {
         }
     });
 };
+
 http.globalAgent.maxSockets = 1024;
 var server = http.createServer(function(request, response) {
     logger.debug('Received unknown request for ' + request.url);
@@ -54,20 +51,10 @@ var server = http.createServer(function(request, response) {
     response.end();
 });
 
-var dbconnect = function () {
-    db.connect()
-        .then(function() {
-            server.listen(conf.ws.port, function() {
-                logger.info('Server - ' + conf.ws.serverAddress +  ' is listening on port ' + conf.ws.port + '. Host externalIP: ' + conf.ws.externalAddress);
-                heartBeat.start();
-            });
-        }).catch(function(err) {
-            logger.error('An exception is thrown while connecting to database: ' + err + '\n Waiting 3 seconds to reconnect...');
-            setTimeout(dbconnect, 3000);
-        });
-};
-
-dbconnect();
+server.listen(conf.ws.port, function() {
+    logger.info('Server - ' + conf.ws.serverAddress +  ' is listening on port ' + conf.ws.port + '. Host externalIP: ' + conf.ws.externalAddress);
+    heartBeat.start();
+});
 
 var clients = {};
 
@@ -95,55 +82,51 @@ wsServer.on('request', function(request) {
         logger.error('Connection refused.');
     } else {
         var connection = request.accept('echo-protocol');
-        logger.info('Connection accepted from: ' + connection.remoteAddress);
+        logger.debug('Connection accepted from: ' + connection.remoteAddress);
         connection.on('message', function (message) {
             parseMessage(message.utf8Data, function parseResult(err, messageObject) {
                 if (!err) {
                     if (messageObject.type === 'device') {
                         authorizeDevice(messageObject.deviceToken, messageObject.deviceId, function (accountId) {
-                            if (accountId) {
-                                logger.info('Registration message received from ' + connection.remoteAddress + ' for device -  ' + messageObject.deviceId);
-                                return devices.getDeviceUID(accountId, messageObject.deviceId).then(deviceUID => {
-                                    if(clients[deviceUID] && clients[deviceUID].state !== 'closed') {
-                                        logger.info('Closing previous connection to ' + clients[deviceUID].remoteAddress + ' for device -  ' + deviceUID);
-                                        clients[deviceUID].close(CloseReasons.CLOSE_REASON_NORMAL);
-                                    }
-                                    clients[deviceUID] = connection;
-                                    connectionBindings.update(deviceUID, serverAddress, true,
-                                        function (err) {
-                                            if (err) {
-                                                throw err;
+                            if (accountId) {                             
+                                logger.debug('Registration message received from ' + connection.remoteAddress + ' for device -  ' + messageObject.deviceId);
+                                var channel = accountId + "/" + messageObject.deviceId;
+                                if(clients[channel] && clients[channel].state !== 'closed') {
+                                    logger.info('Closing previous connection to ' + clients[channel].remoteAddress + ' for device -  ' + messageObject.deviceId);
+                                    clients[channel].close(CloseReasons.CLOSE_REASON_NORMAL);
+                                }
+                                clients[channel] = connection;
+                                logger.info('Subscribing to ' + channel + ' channel');  
+
+                                redisClient.subscribe(channel);
+                                redisClient.onMessage(function (channel, message) {
+                                    logger.info('Receiving Redis message for ' + channel + ' channel');  
+                                    if (message.type === 'actuation') {
+                                        if (message.credentials.username === conf.ws.username && 
+                                            message.credentials.password === conf.ws.password) {
+                                            if(clients[channel]) {
+                                                clients[channel].sendUTF(buildActuation(message.body));
+                                                logger.info("Message sent to " + messageObject.deviceId);
                                             } else {
-                                                logger.debug("Record in database update for device - " + deviceUID);
-                                                connection.sendUTF(msgBuilder.build(msgBuilder.Success.Subscribed));
+                                                logger.warn("No open connection to: " + messageObject.deviceId);
                                             }
-                                        });
-                                }).catch(err => {
-                                    logger.error("Unable to update record in db for device - " + messageObject.deviceId + ', error: ' + JSON.stringify(err));
-                                    connection.sendUTF(msgBuilder.build(msgBuilder.Errors.DatabaseError));
-                                    connection.close(CloseReasons.CLOSE_REASON_NORMAL);
-                                });
+                                        } else {
+                                            logger.error("Invalid credentials in message");
+                                        }
+                                    }
+                                    else  {
+                                        logger.error("Invalid message object type - " + message.type);
+                                    }
+                                });  
                             } else {
                                 logger.info("Unauthorized device " + messageObject.deviceId);
                                 connection.sendUTF(msgBuilder.build(msgBuilder.Errors.InvalidToken));
                                 connection.close(CloseReasons.CLOSE_REASON_POLICY_VIOLATION);
                             }
                         });
-                    } else if (messageObject.type === 'actuation') {
-                        logger.info("Received actuation from dashboard " + JSON.stringify(messageObject));
-                        if (messageObject.credentials.username === conf.ws.username && messageObject.credentials.password === conf.ws.password) {
-                            var deviceUID = messageObject.body.content.deviceUID;
-                            if(clients[deviceUID]) {
-                                clients[deviceUID].sendUTF(buildActuation(messageObject.body));
-                                logger.info("Message sent to " + deviceUID);
-                            } else {
-                                logger.warn("No open connection to: " + deviceUID);
-                            }
-                        } else {
-                            logger.error("Invalid credentials in message");
-                        }
-                    } else if (messageObject.type === 'ping') {
-                        logger.debug("Sending PONG");
+                    } 
+                    else if (messageObject.type === 'ping') {
+                        logger.info("Sending PONG");
                         connection.sendUTF(msgBuilder.build(msgBuilder.Success.Pong));
                     } else {
                         logger.error("Invalid message object type - " + messageObject.type);
@@ -155,17 +138,12 @@ wsServer.on('request', function(request) {
                 }
             });
         });
+
         connection.on('close', function(reasonCode, description) {
-            Object.keys(clients).some(function(deviceUID) {
-                if(clients[deviceUID] === connection) {
-                    connectionBindings.update(deviceUID, serverAddress, false, function(err) {
-                        if(err) {
-                            logger.error("Failure: " + err);
-                            logger.error("Cannot remove " + deviceUID + " from database.");
-                        }
-                        delete clients[deviceUID];
-                        return true;
-                    });
+            Object.keys(clients).some(function(channel) {
+                if(clients[channel] === connection) {
+                    delete clients[channel];
+                    return true;
                 }
                 return false;
             });

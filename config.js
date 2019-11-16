@@ -60,76 +60,34 @@ var getOISPConfig = (function () {
     };
 })();
 
-var postgres_config = getOISPConfig("postgresConfig"),
-    websocketUser_config = getOISPConfig("websocketUserConfig"),
+var websocketUser_config = getOISPConfig("websocketUserConfig"),
     kafka_config = getOISPConfig("kafkaConfig"),
+    redis_config = getOISPConfig("redisConfig"),
     uri = getOISPConfig("uri"),
     winston = require('winston'),
     os = require('os');
 
-// Get replica information from the postgres config,
-// Done this way to avoid compatibility problems with other services
-var	postgresReadReplicas = [],
-    postgresWriteConf = {};
-
-if (postgres_config.readReplicas) {
-    postgresReadReplicas = postgres_config.readReplicas;
-} else if (postgres_config.readHostname) {
-    postgresReadReplicas.push({
-        host: postgres_config.readHostname,
-        port: postgres_config.readPort,
-        username: postgres_config.readUsername,
-        password: postgres_config.readPassword
-    });
-} else {
-    // Use default db config as read
-    postgresReadReplicas.push({});
-}
-
-if (postgres_config.writeHostname) {
-    postgresWriteConf = {
-        host: postgres_config.writeHostname,
-        port: postgres_config.writePort,
-        username: postgres_config.writeUsername,
-        password: postgres_config.writePassword,
-    };
-}
-
 var config = {
-    postgres: {
-        database: postgres_config.dbname,
-        username: postgres_config.username,
-        password: postgres_config.password,
-        options: {
-            host: postgres_config.hostname,
-            port: postgres_config.port,
-            dialect: 'postgres',
-            replication: {
-                read: postgresReadReplicas,
-                write: postgresWriteConf
-            },
-            pool: {
-                max: 12,
-                min: 0,
-                idle: 10000
-            }
-        }
+    redis:{
+        host: redis_config.hostname,
+        password: redis_config.password,
+        port: redis_config.port
     },
     kafka: {
         uri: kafka_config.uri,
         topicsHeartbeatName: kafka_config.topicsHeartbeatName,
         topicsHeartbeatInterval: kafka_config.topicsHeartbeatInterval
     },
-    "ws": {
-        "externalAddress": uri,
+    ws: {
+        externalAddress: uri,
         //Until TAP platform won't supper unsecure websocket connection, we can only use 443 port
-        "externalPort": 5000,
-        "serverAddress": os.hostname(),
-        "port": 5000,
-        "username": websocketUser_config.username,
-        "password": websocketUser_config.password
+        externalPort: 5000,
+        serverAddress: os.hostname(),
+        port: 5000,
+        username: websocketUser_config.username,
+        password: websocketUser_config.password
     },
-    "logger": {
+    logger: {
         format : winston.format.combine(
         	        winston.format.colorize(),
         	        winston.format.simple(),
@@ -142,6 +100,5 @@ var config = {
 
 config.ws.externalPort = config.ws.port;
 config.ws.externalAddress = config.ws.serverAddress + '.websocket-server';
-
 
 module.exports = config;
