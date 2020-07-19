@@ -94,7 +94,8 @@ var config = {
         	        winston.format.timestamp(),
         	        winston.format.printf(info => { return `${info.timestamp}-${info.level}: ${info.message}`; })
         	     ),
-        transports : [new winston.transports.Console()]
+        transports : [new winston.transports.Console()],
+        level: process.env.DEBUG || "info"
     }
 };
 

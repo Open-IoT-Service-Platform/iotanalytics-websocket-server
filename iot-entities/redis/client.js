@@ -70,6 +70,11 @@ function RedisClient(conf) {
         }
     };
 
+    me.unsubscribe = function(channel) {
+
+        me.client.unsubscribe(channel);
+    };
+
     me.onMessage = function(callback) {
         if ( callback ) {
             me.client.on('message', function (channel, message) {
