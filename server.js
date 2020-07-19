@@ -100,7 +100,14 @@ wsServer.on('request', function(request) {
 
                                 redisClient.subscribe(channel);
                                 redisClient.onMessage(function (channel, message) {
-                                    logger.info('Receiving Redis message for ' + channel + ' channel');  
+                                    // nodejs pubsub redis client is not filtering the messages by channels.
+                                    // That means: Every message arrives here, independent of the registered channel.
+                                    // We have to check whether the message is meant for us
+                                    if (message === undefined || message.body === undefined || message.body.content === undefined ||
+                                      message.body.content.domainId === undefined || message.body.content.domainId !== accountId){
+                                        return;
+                                    }
+                                    logger.info('Receiving Redis message for ' + channel + ' channel');
                                     if (message.type === 'actuation') {
                                         if (message.credentials.username === conf.ws.username && 
                                             message.credentials.password === conf.ws.password) {
@@ -140,8 +147,10 @@ wsServer.on('request', function(request) {
         });
 
         connection.on('close', function(reasonCode, description) {
+            logger.info("Disconnected from client ");
             Object.keys(clients).some(function(channel) {
                 if(clients[channel] === connection) {
+                    redisClient.unsubscribe(channel);
                     delete clients[channel];
                     return true;
                 }
