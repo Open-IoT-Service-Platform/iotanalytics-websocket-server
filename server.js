@@ -77,6 +77,33 @@ var buildActuation = function(content) {
     return JSON.stringify({code: 1024, content: content});
 };
 
+redisClient.onMessage(function (channel, message) {
+    logger.info('Receiving Redis message for ' + channel + ' channel');
+    var splitted = channel.split("/");
+    var accountId = splitted[0];
+    var deviceId = splitted[1];
+    if (message === undefined || message.body === undefined || message.body.content === undefined ||
+        message.body.content.domainId === undefined || message.body.content.domainId !== accountId) {
+        return;
+    }
+    if (message.type === 'actuation') {
+        if (message.credentials.username === conf.ws.username &&
+            message.credentials.password === conf.ws.password) {
+            if(clients[channel]) {
+                clients[channel].sendUTF(buildActuation(message.body));
+                logger.info("Message sent to " + deviceId);
+            } else {
+                logger.warn("No open connection to: " + deviceId);
+            }
+        } else {
+            logger.error("Invalid credentials in message");
+        }
+    }
+    else  {
+        logger.error("Invalid message object type - " + message.type);
+    }
+});
+
 wsServer.on('request', function(request) {
     if (request.requestedProtocols.indexOf('echo-protocol') === -1) {
         request.reject();
@@ -100,32 +127,6 @@ wsServer.on('request', function(request) {
                                 logger.info('Subscribing to ' + channel + ' channel');
 
                                 redisClient.subscribe(channel);
-                                redisClient.onMessage(function (channel, message) {
-                                    // nodejs pubsub redis client is not filtering the messages by channels.
-                                    // That means: Every message arrives here, independent of the registered channel.
-                                    // We have to check whether the message is meant for us
-                                    if (message === undefined || message.body === undefined || message.body.content === undefined ||
-                                      message.body.content.domainId === undefined || message.body.content.domainId !== accountId){
-                                        return;
-                                    }
-                                    logger.info('Receiving Redis message for ' + channel + ' channel');
-                                    if (message.type === 'actuation') {
-                                        if (message.credentials.username === conf.ws.username &&
-                                            message.credentials.password === conf.ws.password) {
-                                            if(clients[channel]) {
-                                                clients[channel].sendUTF(buildActuation(message.body));
-                                                logger.info("Message sent to " + messageObject.deviceId);
-                                            } else {
-                                                logger.warn("No open connection to: " + messageObject.deviceId);
-                                            }
-                                        } else {
-                                            logger.error("Invalid credentials in message");
-                                        }
-                                    }
-                                    else  {
-                                        logger.error("Invalid message object type - " + message.type);
-                                    }
-                                });
                             } else {
                                 logger.info("Unauthorized device " + messageObject.deviceId);
                                 connection.sendUTF(msgBuilder.build(msgBuilder.Errors.InvalidToken));
