@@ -92,5 +92,6 @@ exports.redisClient = function () {
     if ( !client ) {
         client = new RedisClient(config.redis, logger);
     }
+    client.connect();
     return client;
 };
