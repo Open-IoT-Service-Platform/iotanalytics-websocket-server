@@ -64,6 +64,7 @@ var websocketUser_config = getOISPConfig("websocketUserConfig"),
     kafka_config = getOISPConfig("kafkaConfig"),
     redis_config = getOISPConfig("redisConfig"),
     uri = getOISPConfig("uri"),
+    keycloak_config = getOISPConfig("keycloakConfig"),
     winston = require('winston'),
     os = require('os');
 
@@ -96,6 +97,18 @@ var config = {
         	     ),
         transports : [new winston.transports.Console()],
         level: process.env.DEBUG || "info"
+    },
+    keycloak: {
+        realm: keycloak_config.realm,
+        "auth-server-url": keycloak_config["auth-server-url"],
+        "bearer-only": true,
+        resource: keycloak_config["websocket-server-id"],
+        credentials: {
+            secret: keycloak_config["websocket-server-secret"]
+        },
+        "ssl-required": keycloak_config["ssl-required"],
+        "confidential-port": 0,
+        "verify-token-audience": true
     }
 };
 
