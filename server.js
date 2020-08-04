@@ -19,28 +19,29 @@
 var websocket = require('websocket'),
     WebSocketServer = websocket.server,
     CloseReasons = websocket.connection,
+    Keycloak = require('keycloak-connect'),
     http = require('http'),
-    fs = require('fs'),
-    jwt = require('jsonwebtoken'),
     conf = require('./config'),
     logger = require('./lib/logger/winstonLogger'),
-    cert = fs.readFileSync(__dirname + '/keys/public.pem'),
     msgBuilder = require('./errors'),
     heartBeat = require('./lib/heartbeat'),
-    redisClient = require('./iot-entities').redisClient;
+    redisClient = require('./iot-entities').redisClient,
+    keycloakAdapter = new Keycloak({}, conf.keycloak);
 
 var authorizeDevice = function(token, deviceId, callback) {
-    jwt.verify(token, cert, function(err, decoded) {
-        if(!err) {
-            if (deviceId === decoded.sub) {
-                callback(decoded.accounts[0].id);
-            } else {
-                callback(false);
-            }
+    keycloakAdapter.grantManager.createGrant({ access_token: token }).then(grant => {
+        if (grant.access_token.content.azp !== conf.keycloak.resource &&
+            !grant.access_token.content.aud.includes(conf.keycloak.resource)) {
+            throw 'Token audience does not include websocket server!';
+        }
+        if (grant.access_token.content.sub === deviceId) {
+            callback(grant.access_token.content.accounts[0].id);
         } else {
-            logger.error('Unable to verify device token, error: ' + err);
             callback(false);
         }
+    }).catch(err => {
+        logger.error('Unable to verify device token, error: ' + err);
+        callback(false);
     });
 };
 
@@ -88,7 +89,7 @@ wsServer.on('request', function(request) {
                 if (!err) {
                     if (messageObject.type === 'device') {
                         authorizeDevice(messageObject.deviceToken, messageObject.deviceId, function (accountId) {
-                            if (accountId) {                             
+                            if (accountId) {
                                 logger.debug('Registration message received from ' + connection.remoteAddress + ' for device -  ' + messageObject.deviceId);
                                 var channel = accountId + "/" + messageObject.deviceId;
                                 if(clients[channel] && clients[channel].state !== 'closed') {
@@ -96,7 +97,7 @@ wsServer.on('request', function(request) {
                                     clients[channel].close(CloseReasons.CLOSE_REASON_NORMAL);
                                 }
                                 clients[channel] = connection;
-                                logger.info('Subscribing to ' + channel + ' channel');  
+                                logger.info('Subscribing to ' + channel + ' channel');
 
                                 redisClient.subscribe(channel);
                                 redisClient.onMessage(function (channel, message) {
@@ -109,7 +110,7 @@ wsServer.on('request', function(request) {
                                     }
                                     logger.info('Receiving Redis message for ' + channel + ' channel');
                                     if (message.type === 'actuation') {
-                                        if (message.credentials.username === conf.ws.username && 
+                                        if (message.credentials.username === conf.ws.username &&
                                             message.credentials.password === conf.ws.password) {
                                             if(clients[channel]) {
                                                 clients[channel].sendUTF(buildActuation(message.body));
@@ -124,14 +125,14 @@ wsServer.on('request', function(request) {
                                     else  {
                                         logger.error("Invalid message object type - " + message.type);
                                     }
-                                });  
+                                });
                             } else {
                                 logger.info("Unauthorized device " + messageObject.deviceId);
                                 connection.sendUTF(msgBuilder.build(msgBuilder.Errors.InvalidToken));
                                 connection.close(CloseReasons.CLOSE_REASON_POLICY_VIOLATION);
                             }
                         });
-                    } 
+                    }
                     else if (messageObject.type === 'ping') {
                         logger.info("Sending PONG");
                         connection.sendUTF(msgBuilder.build(msgBuilder.Success.Pong));
