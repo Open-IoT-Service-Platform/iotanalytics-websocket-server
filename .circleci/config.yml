@@ -15,7 +15,7 @@ executors:
       TZ: "Europe/Berlin"
   docker-executor:
     docker:
-      - image: circleci/node:8.0
+      - image: circleci/node:10.0
     working_directory: ~/repo
     environment:
       shell: /bin/bash
@@ -169,7 +169,7 @@ jobs:
           shell: /bin/bash
           name: Run linting and tests
           command: |
-            node_modules/grunt-cli/bin/grunt build-api
+            node_modules/grunt-cli/bin/grunt validate
 workflows:
   version: 2.1
   workflow:
