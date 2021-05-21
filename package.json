@@ -11,7 +11,6 @@
     "hooker": "^0.2.3",
     "websocket": "^1.0.18",
     "winston": "^3.1.0",
-    "sequelize": "4.39.0",
     "pg-hstore": "2.3.2",
     "pg": "7.5.0",
     "kafka-node": "^3.0.1",
