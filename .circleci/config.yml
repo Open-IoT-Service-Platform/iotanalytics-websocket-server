@@ -123,10 +123,15 @@ commands:
             cd platform-launcher
             export PATH=$PATH:/snap/bin
             make import-images DOCKER_TAG=test DEBUG=true
-            npm install nodemailer
             export NODOCKERLOGIN=true
-            make deploy-oisp-test DOCKER_TAG=test
-            make test
+            retval=2;
+            until [ ${retval} -eq 0 ]; do
+              make undeploy-oisp
+              (for i in {1..20}; do sleep 60; echo .; done&) &&  make deploy-oisp-test DOCKER_TAG=test USE_LOCAL_REGISTRY=true
+              make test
+              retval=$?
+            done
+          no_output_timeout: 20m
 jobs:
   e2e-test:
     executor: vm-executor
@@ -159,8 +164,12 @@ jobs:
           shell: /bin/bash
           name: Install dependencies
           command: |
-            cd public-interface
             npm install
+      - run:
+          shell: /bin/bash
+          name: Run linting and tests
+          command: |
+            node_modules/grunt-cli/bin/grunt build-api
 workflows:
   version: 2.1
   workflow:
