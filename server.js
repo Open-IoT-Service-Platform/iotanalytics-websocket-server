@@ -30,10 +30,6 @@ var websocket = require('websocket'),
 
 var authorizeDevice = function(token, deviceId, callback) {
     keycloakAdapter.grantManager.createGrant({ access_token: token }).then(grant => {
-        if (grant.access_token.content.azp !== conf.keycloak.resource &&
-            !grant.access_token.content.aud.includes(conf.keycloak.resource)) {
-            throw 'Token audience does not include websocket server!';
-        }
         if (grant.access_token.content.sub === deviceId) {
             callback(grant.access_token.content.accounts[0].id);
         } else {
